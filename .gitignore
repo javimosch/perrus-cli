@@ -1,0 +1,5 @@
+perrus-cli
+perrus-cli-linux
+gatus-go
+*.pid
+*.log

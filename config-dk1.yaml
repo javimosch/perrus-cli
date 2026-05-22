@@ -1,0 +1,178 @@
+# perrus-cli — JAR infrastructure monitoring (dk1 deployment)
+
+endpoints:
+
+  # ─── Infrastructure ───────────────────────────────────────────────────────
+
+  - name: "dk1-ssh"
+    group: "Infrastructure"
+    url: "tcp://92.113.145.178:22"
+    interval: "60s"
+    conditions:
+      - "[CONNECTED] == true"
+
+  - name: "dk2-ssh"
+    group: "Infrastructure"
+    url: "tcp://92.113.145.16:22"
+    interval: "60s"
+    conditions:
+      - "[CONNECTED] == true"
+
+  - name: "dk1-traefik"
+    group: "Infrastructure"
+    url: "tcp://92.113.145.178:443"
+    interval: "60s"
+    conditions:
+      - "[CONNECTED] == true"
+
+  - name: "dk1-socks5"
+    group: "Infrastructure"
+    url: "tcp://92.113.145.178:1080"
+    interval: "120s"
+    conditions:
+      - "[CONNECTED] == true"
+
+  - name: "dk2-socks5"
+    group: "Infrastructure"
+    url: "tcp://92.113.145.16:1080"
+    interval: "120s"
+    conditions:
+      - "[CONNECTED] == true"
+
+  - name: "dk1-vpn-auth"
+    group: "Infrastructure"
+    url: "http://localhost:8088/health"
+    interval: "60s"
+    conditions:
+      - "[STATUS] == 200"
+      - "[RESPONSE_TIME] < 3000"
+
+  - name: "dk2-vpn-auth"
+    group: "Infrastructure"
+    url: "http://92.113.145.16:8088/health"
+    interval: "60s"
+    conditions:
+      - "[STATUS] == 200"
+      - "[RESPONSE_TIME] < 3000"
+
+  - name: "dk2-rdp-tunnel"
+    group: "Infrastructure"
+    url: "tcp://92.113.145.16:23389"
+    interval: "120s"
+    conditions:
+      - "[CONNECTED] == true"
+
+  # ─── AI & Agents ──────────────────────────────────────────────────────────
+
+  - name: "rbm2-hermes"
+    group: "AI & Agents"
+    url: "http://100.114.4.57:9119"
+    interval: "60s"
+    conditions:
+      - "[STATUS] == 200"
+      - "[RESPONSE_TIME] < 5000"
+
+  - name: "rbm2-paseo-daemon"
+    group: "AI & Agents"
+    url: "tcp://100.114.4.57:6767"
+    interval: "60s"
+    conditions:
+      - "[CONNECTED] == true"
+
+  - name: "rbm4-paseo-daemon"
+    group: "AI & Agents"
+    url: "tcp://100.67.28.60:6767"
+    interval: "60s"
+    conditions:
+      - "[CONNECTED] == true"
+
+  - name: "rbm2-tmux-stt"
+    group: "AI & Agents"
+    url: "tcp://100.114.4.57:8765"
+    interval: "120s"
+    conditions:
+      - "[CONNECTED] == true"
+
+  # ─── Dev Tools ────────────────────────────────────────────────────────────
+
+  - name: "rbm2-gitea"
+    group: "Dev Tools"
+    url: "http://100.114.4.57:3000"
+    interval: "60s"
+    conditions:
+      - "[STATUS] == 200"
+      - "[RESPONSE_TIME] < 3000"
+
+  - name: "dk1-cmdcenter"
+    group: "Dev Tools"
+    url: "http://localhost:3031"
+    interval: "60s"
+    conditions:
+      - "[STATUS] == 200"
+      - "[RESPONSE_TIME] < 3000"
+
+  - name: "dk1-cir-doc-gen"
+    group: "Dev Tools"
+    url: "http://localhost:3002"
+    interval: "60s"
+    conditions:
+      - "[STATUS] == 200"
+      - "[RESPONSE_TIME] < 3000"
+
+  - name: "dk1-dcar-browser"
+    group: "Dev Tools"
+    url: "http://localhost:3050"
+    interval: "60s"
+    conditions:
+      - "[STATUS] == 200"
+      - "[RESPONSE_TIME] < 3000"
+
+  - name: "dk1-hotify"
+    group: "Dev Tools"
+    url: "http://localhost:8080"
+    interval: "60s"
+    conditions:
+      - "[STATUS] == 200"
+      - "[RESPONSE_TIME] < 3000"
+
+  # ─── Trading ──────────────────────────────────────────────────────────────
+
+  - name: "dk1-printer-bot"
+    group: "Trading"
+    url: "tcp://localhost:3000"
+    interval: "60s"
+    conditions:
+      - "[CONNECTED] == true"
+
+  - name: "rbm2-shares-proxy"
+    group: "Trading"
+    url: "tcp://100.114.4.57:3000"
+    interval: "60s"
+    conditions:
+      - "[CONNECTED] == true"
+
+  # ─── Web Services ─────────────────────────────────────────────────────────
+
+  - name: "dk2-supergato"
+    group: "Web Services"
+    url: "http://92.113.145.16:3099"
+    interval: "60s"
+    conditions:
+      - "[STATUS] == 200"
+      - "[RESPONSE_TIME] < 5000"
+
+  - name: "dk1-gopassui"
+    group: "Web Services"
+    url: "http://localhost:8768"
+    interval: "60s"
+    conditions:
+      - "[STATUS] == 200"
+      - "[RESPONSE_TIME] < 3000"
+
+  - name: "dk1-powersentry"
+    group: "Web Services"
+    url: "http://localhost:8083"
+    interval: "60s"
+    conditions:
+      - "[STATUS] == 200"
+      - "[RESPONSE_TIME] < 3000"
