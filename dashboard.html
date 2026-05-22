@@ -42,10 +42,22 @@
     border-radius: 8px;
     padding: 10px 16px;
     font-size: 13px;
+    transition: border-color 0.15s, background 0.15s;
   }
+  .chip.clickable { cursor: pointer; }
+  .chip.clickable:hover { border-color: var(--blue); }
+  .chip.active-up   { border-color: var(--green); background: rgba(34,197,94,0.08); }
+  .chip.active-down { border-color: var(--red);   background: rgba(239,68,68,0.08); }
   .chip .val { font-size: 22px; font-weight: 700; display: block; line-height: 1.2; }
   .chip .val.up   { color: var(--green); }
   .chip .val.down { color: var(--red); }
+  .filter-label {
+    font-size: 11px;
+    color: var(--muted);
+    align-self: center;
+    padding: 0 4px;
+  }
+  .filter-label span { color: var(--text); font-weight: 600; }
 
   /* Groups */
   .group { margin-bottom: 32px; }
@@ -138,6 +150,9 @@
 <div id="content"><p class="empty">Loading&hellip;</p></div>
 
 <script>
+var lastStatuses = null;
+var activeFilter = null; // null | 'up' | 'down'
+
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -178,21 +193,30 @@ function makeCard(ep) {
     + '</div>';
 }
 
-function render(statuses) {
-  var up = 0, down = 0;
-  if (!statuses || !statuses.length) {
-    document.getElementById('content').innerHTML = '<p class="empty">No endpoints configured. Add some to config.yaml and restart.</p>';
+function epState(ep) {
+  var latest = (ep.results || [])[(ep.results || []).length - 1];
+  if (!latest) return 'pending';
+  return latest.success ? 'up' : 'down';
+}
+
+function renderContent(statuses) {
+  var filtered = activeFilter
+    ? statuses.filter(function(ep) { return epState(ep) === activeFilter; })
+    : statuses;
+
+  if (!filtered.length) {
+    var msg = activeFilter
+      ? 'No endpoints are currently ' + activeFilter + '.'
+      : 'No endpoints configured. Add some to config.yaml and restart.';
+    document.getElementById('content').innerHTML = '<p class="empty">' + esc(msg) + '</p>';
     return;
   }
 
-  // Group by group field; preserve insertion order
   var groupOrder = [];
   var groups = {};
-  for (var i = 0; i < statuses.length; i++) {
-    var ep     = statuses[i];
-    var g      = ep.group || 'General';
-    var latest = (ep.results || [])[ep.results.length - 1];
-    if (latest) { if (latest.success) up++; else down++; }
+  for (var i = 0; i < filtered.length; i++) {
+    var ep = filtered[i];
+    var g  = ep.group || 'General';
     if (!groups[g]) { groups[g] = []; groupOrder.push(g); }
     groups[g].push(ep);
   }
@@ -208,19 +232,60 @@ function render(statuses) {
     html += '</div></div>';
   }
   document.getElementById('content').innerHTML = html;
+}
 
-  var total = statuses.length;
+function renderSummary(statuses) {
+  var up = 0, down = 0, groupSet = {};
+  for (var i = 0; i < statuses.length; i++) {
+    var ep     = statuses[i];
+    var state  = epState(ep);
+    if (state === 'up')   up++;
+    if (state === 'down') down++;
+    groupSet[ep.group || 'General'] = true;
+  }
+  var total      = statuses.length;
+  var groupCount = Object.keys(groupSet).length;
+
+  var upActive   = activeFilter === 'up'   ? ' active-up'   : '';
+  var downActive = activeFilter === 'down' ? ' active-down' : '';
+  var filterHint = activeFilter
+    ? '<div class="filter-label">showing <span>' + activeFilter + '</span> only — click again to clear</div>'
+    : '';
+
   document.getElementById('summary').innerHTML =
     '<div class="chip"><span class="val">' + total + '</span>endpoints</div>' +
-    '<div class="chip"><span class="val up">'   + up   + '</span>up</div>'   +
-    '<div class="chip"><span class="val down">' + down + '</span>down</div>' +
-    '<div class="chip"><span class="val">' + groupOrder.length + '</span>groups</div>';
+    '<div class="chip clickable' + upActive   + '" id="chip-up"  ><span class="val up">'   + up   + '</span>up</div>'   +
+    '<div class="chip clickable' + downActive + '" id="chip-down"><span class="val down">' + down + '</span>down</div>' +
+    '<div class="chip"><span class="val">' + groupCount + '</span>groups</div>' +
+    filterHint;
+
+  document.getElementById('chip-up').addEventListener('click', function() {
+    activeFilter = activeFilter === 'up' ? null : 'up';
+    render(lastStatuses);
+  });
+  document.getElementById('chip-down').addEventListener('click', function() {
+    activeFilter = activeFilter === 'down' ? null : 'down';
+    render(lastStatuses);
+  });
+}
+
+function render(statuses) {
+  if (!statuses || !statuses.length) {
+    document.getElementById('content').innerHTML = '<p class="empty">No endpoints configured. Add some to config.yaml and restart.</p>';
+    return;
+  }
+  lastStatuses = statuses;
+  renderSummary(statuses);
+  renderContent(statuses);
 }
 
 function load() {
   fetch('/api/v1/endpoints/statuses')
     .then(function(r){ return r.json(); })
-    .then(function(d){ render(d); document.getElementById('ts').textContent = 'updated ' + new Date().toLocaleTimeString(); })
+    .then(function(d){
+      render(d);
+      document.getElementById('ts').textContent = 'updated ' + new Date().toLocaleTimeString();
+    })
     .catch(function(e){ document.getElementById('content').innerHTML = '<p class="empty">Error: ' + esc(e.message) + '</p>'; });
 }
 
