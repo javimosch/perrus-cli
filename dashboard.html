@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>perrus-cli — health dashboard</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --card: #1a1d27;
+    --border: #2a2d3e;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --green: #22c55e;
+    --red: #ef4444;
+    --blue: #3b82f6;
+    --purple: #a78bfa;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    padding: 24px;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 28px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+  header h1 span { color: var(--blue); }
+  .refresh-info { font-size: 12px; color: var(--muted); }
+  .summary { display: flex; gap: 12px; margin-bottom: 28px; flex-wrap: wrap; }
+  .chip {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 13px;
+  }
+  .chip .val { font-size: 22px; font-weight: 700; display: block; line-height: 1.2; }
+  .chip .val.up   { color: var(--green); }
+  .chip .val.down { color: var(--red); }
+
+  /* Groups */
+  .group { margin-bottom: 32px; }
+  .group-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .group-header::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+  .group-header .count {
+    background: var(--border);
+    color: var(--muted);
+    border-radius: 10px;
+    padding: 1px 7px;
+    font-size: 10px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 12px;
+  }
+
+  /* Cards */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    transition: border-color 0.15s;
+  }
+  .card:hover { border-color: var(--blue); }
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .card-name { font-weight: 600; font-size: 14px; }
+  .badge {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .up-badge      { background: rgba(34,197,94,0.15); color: var(--green); }
+  .down-badge    { background: rgba(239,68,68,0.15);  color: var(--red); }
+  .pending-badge { background: rgba(100,116,139,0.2); color: var(--muted); }
+  .card-url {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .dots { display: flex; gap: 3px; margin-bottom: 9px; }
+  .dot { width: 9px; height: 9px; border-radius: 2px; background: var(--border); flex-shrink: 0; }
+  .pass { background: var(--green); }
+  .fail { background: var(--red); }
+  .card-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .ms { color: var(--text); font-weight: 600; }
+  .empty { text-align: center; color: var(--muted); padding: 60px; font-size: 14px; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>perrus</span>-cli</h1>
+  <div class="refresh-info">auto-refresh 15s &nbsp;|&nbsp; <span id="ts">loading&hellip;</span></div>
+</header>
+<div class="summary" id="summary"></div>
+<div id="content"><p class="empty">Loading&hellip;</p></div>
+
+<script>
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function timeAgo(ts) {
+  var d = Math.floor((Date.now() - new Date(ts)) / 1000);
+  if (d < 5)    return 'just now';
+  if (d < 60)   return d + 's ago';
+  if (d < 3600) return Math.floor(d/60) + 'm ago';
+  return Math.floor(d/3600) + 'h ago';
+}
+function makeDots(results) {
+  var html = '';
+  for (var i = 0; i < 20; i++) {
+    var r = results[results.length - 20 + i];
+    if (!r) { html += '<span class="dot" title="no data"></span>'; continue; }
+    var cls = r.success ? 'pass' : 'fail';
+    var ts  = new Date(r.timestamp).toLocaleTimeString();
+    html += '<span class="dot ' + cls + '" title="' + ts + ' — ' + r.duration_ms + 'ms"></span>';
+  }
+  return html;
+}
+function makeCard(ep) {
+  var results = ep.results || [];
+  var latest  = results[results.length - 1];
+  var success = latest ? latest.success : null;
+  var badge   = success === null
+    ? '<span class="badge pending-badge">PENDING</span>'
+    : success
+      ? '<span class="badge up-badge">UP</span>'
+      : '<span class="badge down-badge">DOWN</span>';
+  var ms  = latest ? (latest.duration_ms + 'ms') : '&mdash;';
+  var ago = latest ? timeAgo(latest.timestamp) : 'never';
+  return '<div class="card">'
+    + '<div class="card-header"><span class="card-name">' + esc(ep.name) + '</span>' + badge + '</div>'
+    + '<div class="card-url">' + esc(ep.url) + '</div>'
+    + '<div class="dots">' + makeDots(results) + '</div>'
+    + '<div class="card-meta"><span>last <strong>' + ago + '</strong></span><span class="ms">' + ms + '</span></div>'
+    + '</div>';
+}
+
+function render(statuses) {
+  var up = 0, down = 0;
+  if (!statuses || !statuses.length) {
+    document.getElementById('content').innerHTML = '<p class="empty">No endpoints configured. Add some to config.yaml and restart.</p>';
+    return;
+  }
+
+  // Group by group field; preserve insertion order
+  var groupOrder = [];
+  var groups = {};
+  for (var i = 0; i < statuses.length; i++) {
+    var ep     = statuses[i];
+    var g      = ep.group || 'General';
+    var latest = (ep.results || [])[ep.results.length - 1];
+    if (latest) { if (latest.success) up++; else down++; }
+    if (!groups[g]) { groups[g] = []; groupOrder.push(g); }
+    groups[g].push(ep);
+  }
+
+  var html = '';
+  for (var gi = 0; gi < groupOrder.length; gi++) {
+    var name  = groupOrder[gi];
+    var items = groups[name];
+    html += '<div class="group">';
+    html += '<div class="group-header">' + esc(name) + '<span class="count">' + items.length + '</span></div>';
+    html += '<div class="grid">';
+    for (var ci = 0; ci < items.length; ci++) html += makeCard(items[ci]);
+    html += '</div></div>';
+  }
+  document.getElementById('content').innerHTML = html;
+
+  var total = statuses.length;
+  document.getElementById('summary').innerHTML =
+    '<div class="chip"><span class="val">' + total + '</span>endpoints</div>' +
+    '<div class="chip"><span class="val up">'   + up   + '</span>up</div>'   +
+    '<div class="chip"><span class="val down">' + down + '</span>down</div>' +
+    '<div class="chip"><span class="val">' + groupOrder.length + '</span>groups</div>';
+}
+
+function load() {
+  fetch('/api/v1/endpoints/statuses')
+    .then(function(r){ return r.json(); })
+    .then(function(d){ render(d); document.getElementById('ts').textContent = 'updated ' + new Date().toLocaleTimeString(); })
+    .catch(function(e){ document.getElementById('content').innerHTML = '<p class="empty">Error: ' + esc(e.message) + '</p>'; });
+}
+
+load();
+setInterval(load, 15000);
+</script>
+</body>
+</html>
