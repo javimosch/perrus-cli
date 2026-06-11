@@ -56,6 +56,11 @@ func (tn *TelegramNotifier) Notify(result *Result) {
 		return
 	}
 
+	// Check if endpoint is already in pending alerts (deduplication)
+	if _, exists := tn.pendingAlerts[result.EndpointName]; exists {
+		return // Already pending, skip
+	}
+
 	// Check if we recently sent an alert for this endpoint (cooldown: 1 minute)
 	if lastSent, ok := tn.lastSent[result.EndpointName]; ok {
 		if time.Since(lastSent) < time.Minute {
@@ -63,7 +68,7 @@ func (tn *TelegramNotifier) Notify(result *Result) {
 		}
 	}
 
-	// Add to pending alerts (update if already exists)
+	// Add to pending alerts
 	tn.pendingAlerts[result.EndpointName] = result
 
 	// Start group timer only if not already running
