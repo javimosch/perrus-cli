@@ -9,7 +9,16 @@ import (
 )
 
 type Config struct {
-	Endpoints []Endpoint `yaml:"endpoints"`
+	Endpoints []Endpoint  `yaml:"endpoints"`
+	Telegram  *Telegram   `yaml:"telegram,omitempty"`
+}
+
+type Telegram struct {
+	Enabled            bool      `yaml:"enabled"`
+	BotToken           string    `yaml:"bot_token"`
+	ChatID             string    `yaml:"chat_id"`
+	MaxMessagesPerHour int       `yaml:"max_messages_per_hour"`
+	GroupInterval      duration  `yaml:"group_interval"`
 }
 
 type Endpoint struct {
@@ -68,6 +77,20 @@ func loadConfig(path string) (*Config, error) {
 			ep.Timeout.Duration = 10 * time.Second
 		}
 	}
+	if cfg.Telegram != nil && cfg.Telegram.Enabled {
+		if cfg.Telegram.BotToken == "" {
+			return nil, fmt.Errorf("telegram enabled but bot_token is empty")
+		}
+		if cfg.Telegram.ChatID == "" {
+			return nil, fmt.Errorf("telegram enabled but chat_id is empty")
+		}
+		if cfg.Telegram.MaxMessagesPerHour <= 0 {
+			cfg.Telegram.MaxMessagesPerHour = 5
+		}
+		if cfg.Telegram.GroupInterval.Duration == 0 {
+			cfg.Telegram.GroupInterval.Duration = 30 * time.Second
+		}
+	}
 	return &cfg, nil
 }
 
@@ -75,6 +98,14 @@ func exampleConfig() string {
 	return `# perrus-cli configuration
 # URL schemes: https://, http://, tcp://, dns://
 # Use 'group' to categorize endpoints in the dashboard
+
+# Optional Telegram integration for alerts
+telegram:
+  enabled: false
+  bot_token: "YOUR_BOT_TOKEN"
+  chat_id: "YOUR_CHAT_ID"
+  max_messages_per_hour: 5  # per endpoint
+  group_interval: 30s        # batch failures within this window
 
 endpoints:
   - name: "httpbin-ok"
