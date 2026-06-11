@@ -18,6 +18,7 @@ type TelegramNotifier struct {
 	pendingAlerts  map[string]*Result     // endpoint -> latest failure
 	lastSent       map[string]time.Time   // endpoint -> last sent timestamp
 	groupTimer     *time.Timer
+	sending        bool                   // flag to prevent concurrent sends
 	chatID         string
 }
 
@@ -61,9 +62,9 @@ func (tn *TelegramNotifier) Notify(result *Result) {
 		return // Already pending, skip
 	}
 
-	// Check if we recently sent an alert for this endpoint (cooldown: 1 minute)
+	// Check if we recently sent an alert for this endpoint (cooldown: 5 minutes)
 	if lastSent, ok := tn.lastSent[result.EndpointName]; ok {
-		if time.Since(lastSent) < time.Minute {
+		if time.Since(lastSent) < 5*time.Minute {
 			return // Skip, cooldown period not over
 		}
 	}
@@ -105,31 +106,52 @@ func (tn *TelegramNotifier) checkRateLimit(endpoint string) bool {
 
 func (tn *TelegramNotifier) sendGroupedAlerts() {
 	tn.mu.Lock()
-	defer tn.mu.Unlock()
-
+	
+	// Prevent concurrent sends
+	if tn.sending {
+		tn.groupTimer = nil
+		tn.mu.Unlock()
+		return
+	}
+	
 	if len(tn.pendingAlerts) == 0 {
 		tn.groupTimer = nil
+		tn.mu.Unlock()
 		return
 	}
 
+	// Mark as sending
+	tn.sending = true
+	
+	// Copy pending alerts to avoid holding lock during send
+	pending := make(map[string]*Result)
+	for k, v := range tn.pendingAlerts {
+		pending[k] = v
+	}
+	
+	tn.groupTimer = nil
+	tn.mu.Unlock()
+
 	// Check rate limit for each endpoint
-	for endpoint := range tn.pendingAlerts {
+	for endpoint := range pending {
 		if !tn.checkRateLimit(endpoint) {
 			log.Printf("Telegram rate limit exceeded for %s, skipping notification", endpoint)
-			delete(tn.pendingAlerts, endpoint)
+			delete(pending, endpoint)
 		}
 	}
 
 	// If all endpoints were rate limited, don't send anything
-	if len(tn.pendingAlerts) == 0 {
-		tn.groupTimer = nil
+	if len(pending) == 0 {
+		tn.mu.Lock()
+		tn.sending = false
+		tn.mu.Unlock()
 		return
 	}
 
 	var message string
-	if len(tn.pendingAlerts) == 1 {
+	if len(pending) == 1 {
 		// Single endpoint failure
-		for _, res := range tn.pendingAlerts {
+		for _, res := range pending {
 			message = tn.formatSingleAlert(res)
 		}
 	} else {
@@ -140,17 +162,20 @@ func (tn *TelegramNotifier) sendGroupedAlerts() {
 	if err := tn.sendMessage(message); err != nil {
 		log.Printf("Failed to send Telegram message: %v", err)
 	} else {
-		log.Printf("Sent Telegram alert for %d failing endpoints", len(tn.pendingAlerts))
+		log.Printf("Sent Telegram alert for %d failing endpoints", len(pending))
 		// Record last sent time for each endpoint
 		now := time.Now()
-		for endpoint := range tn.pendingAlerts {
+		for endpoint := range pending {
+			tn.mu.Lock()
 			tn.lastSent[endpoint] = now
+			delete(tn.pendingAlerts, endpoint)
+			tn.mu.Unlock()
 		}
 	}
 
-	// Clear pending alerts and reset timer
-	tn.pendingAlerts = make(map[string]*Result)
-	tn.groupTimer = nil
+	tn.mu.Lock()
+	tn.sending = false
+	tn.mu.Unlock()
 }
 
 func (tn *TelegramNotifier) formatSingleAlert(res *Result) string {
