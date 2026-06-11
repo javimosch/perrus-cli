@@ -6,14 +6,20 @@ import (
 )
 
 type Monitor struct {
-	cfg   *Config
-	store *Store
-	done  chan struct{}
-	wg    sync.WaitGroup
+	cfg       *Config
+	store     *Store
+	telegram  *TelegramNotifier
+	done      chan struct{}
+	wg        sync.WaitGroup
 }
 
 func NewMonitor(cfg *Config, store *Store) *Monitor {
-	return &Monitor{cfg: cfg, store: store, done: make(chan struct{})}
+	return &Monitor{
+		cfg:      cfg,
+		store:    store,
+		telegram: NewTelegramNotifier(cfg.Telegram),
+		done:     make(chan struct{}),
+	}
 }
 
 func (m *Monitor) Start() {
@@ -27,12 +33,15 @@ func (m *Monitor) Start() {
 func (m *Monitor) Stop() {
 	close(m.done)
 	m.wg.Wait()
+	m.telegram.Stop()
 }
 
 func (m *Monitor) watch(ep *Endpoint) {
 	defer m.wg.Done()
 	// First check immediately
-	m.store.Add(ep.Name, checkEndpoint(ep))
+	res := checkEndpoint(ep)
+	m.store.Add(ep.Name, res)
+	m.telegram.Notify(res)
 
 	ticker := time.NewTicker(ep.Interval.Duration)
 	defer ticker.Stop()
@@ -41,7 +50,9 @@ func (m *Monitor) watch(ep *Endpoint) {
 		case <-m.done:
 			return
 		case <-ticker.C:
-			m.store.Add(ep.Name, checkEndpoint(ep))
+			res := checkEndpoint(ep)
+			m.store.Add(ep.Name, res)
+			m.telegram.Notify(res)
 		}
 	}
 }
