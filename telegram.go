@@ -20,6 +20,7 @@ type TelegramNotifier struct {
 	groupTimer     *time.Timer
 	sending        bool                   // flag to prevent concurrent sends
 	chatID         string
+	groupMessageLog []time.Time           // global group message timestamps
 }
 
 type TelegramMessage struct {
@@ -33,12 +34,13 @@ func NewTelegramNotifier(cfg *Telegram) *TelegramNotifier {
 		return nil
 	}
 	return &TelegramNotifier{
-		cfg:           cfg,
-		client:        &http.Client{Timeout: 10 * time.Second},
-		messageLog:    make(map[string][]time.Time),
-		pendingAlerts: make(map[string]*Result),
-		lastSent:      make(map[string]time.Time),
-		chatID:        cfg.ChatID,
+		cfg:             cfg,
+		client:          &http.Client{Timeout: 10 * time.Second},
+		messageLog:      make(map[string][]time.Time),
+		pendingAlerts:   make(map[string]*Result),
+		lastSent:        make(map[string]time.Time),
+		chatID:          cfg.ChatID,
+		groupMessageLog: make([]time.Time, 0),
 	}
 }
 
@@ -104,6 +106,29 @@ func (tn *TelegramNotifier) checkRateLimit(endpoint string) bool {
 	return true
 }
 
+func (tn *TelegramNotifier) checkGroupRateLimit() bool {
+	now := time.Now()
+	hourAgo := now.Add(-time.Hour)
+
+	// Clean old group messages
+	var recent []time.Time
+	for _, ts := range tn.groupMessageLog {
+		if ts.After(hourAgo) {
+			recent = append(recent, ts)
+		}
+	}
+	tn.groupMessageLog = recent
+
+	// Check global limit (1 per hour for group messages)
+	if len(recent) >= 1 {
+		return false
+	}
+
+	// Add current message
+	tn.groupMessageLog = append(recent, now)
+	return true
+}
+
 func (tn *TelegramNotifier) sendGroupedAlerts() {
 	tn.mu.Lock()
 	
@@ -142,6 +167,15 @@ func (tn *TelegramNotifier) sendGroupedAlerts() {
 
 	// If all endpoints were rate limited, don't send anything
 	if len(pending) == 0 {
+		tn.mu.Lock()
+		tn.sending = false
+		tn.mu.Unlock()
+		return
+	}
+
+	// Check global group rate limit (1 per hour)
+	if !tn.checkGroupRateLimit() {
+		log.Printf("Telegram group rate limit exceeded (1 per hour), skipping notification")
 		tn.mu.Lock()
 		tn.sending = false
 		tn.mu.Unlock()

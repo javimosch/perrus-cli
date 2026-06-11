@@ -3,3 +3,5 @@ perrus-cli-linux
 gatus-go
 *.pid
 *.log
+config.yaml
+config-test.yaml
