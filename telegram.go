@@ -62,9 +62,9 @@ func (tn *TelegramNotifier) Notify(result *Result) {
 		return // Already pending, skip
 	}
 
-	// Check if we recently sent an alert for this endpoint (cooldown: 5 minutes)
+	// Check if we recently sent an alert for this endpoint (cooldown: 10 minutes)
 	if lastSent, ok := tn.lastSent[result.EndpointName]; ok {
-		if time.Since(lastSent) < 5*time.Minute {
+		if time.Since(lastSent) < 10*time.Minute {
 			return // Skip, cooldown period not over
 		}
 	}
