@@ -1,0 +1,16 @@
+# Test config for Telegram smoke test
+telegram:
+  enabled: true
+  bot_token: "8992841516:AAEDtGB2_8pZamC12IRb7_LDhH5xBv0QsP0"
+  chat_id: "8292412122"
+  max_messages_per_hour: 10
+  group_interval: 2s
+
+endpoints:
+  - name: "test-server"
+    group: "Test"
+    url: "http://localhost:9999/health"
+    interval: "3s"
+    conditions:
+      - "[STATUS] == 200"
+      - "[RESPONSE_TIME] < 2000"
