@@ -23,7 +23,24 @@ func runServer(port int, cfg *Config) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/health", handleHealth)
 	mux.HandleFunc("/api/v1/endpoints/statuses", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, store.GetStatuses(cfg))
+		all := store.GetStatuses(cfg)
+		// ?group=X filters to one group (case-insensitive) — powers the /g/<group> pages
+		if g := r.URL.Query().Get("group"); g != "" {
+			filtered := make([]EndpointStatus, 0, len(all))
+			for _, ep := range all {
+				if strings.EqualFold(ep.Group, g) {
+					filtered = append(filtered, ep)
+				}
+			}
+			all = filtered
+		}
+		writeJSON(w, all)
+	})
+	// /g/<group> — a public status page scoped to a single group (same dashboard,
+	// pre-filtered), so a product can link to a status page for its services only.
+	mux.HandleFunc("/g/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(dashboardHTML)
 	})
 	mux.HandleFunc("/api/v1/endpoints/", func(w http.ResponseWriter, r *http.Request) {
 		// /api/v1/endpoints/{name}/statuses

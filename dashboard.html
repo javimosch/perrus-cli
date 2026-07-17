@@ -279,8 +279,20 @@ function render(statuses) {
   renderContent(statuses);
 }
 
+// on /g/<group> this page scopes to a single group (public per-product status page)
+var groupScope = (function(){
+  var m = location.pathname.match(/^\/g\/([^\/?#]+)/);
+  return m ? decodeURIComponent(m[1]) : '';
+})();
+if (groupScope) {
+  document.title = groupScope + ' — status';
+  var h1 = document.querySelector('h1');
+  if (h1) { h1.innerHTML = '<span>' + esc(groupScope) + '</span> status'; }
+}
+
 function load() {
-  fetch('/api/v1/endpoints/statuses')
+  var url = '/api/v1/endpoints/statuses' + (groupScope ? '?group=' + encodeURIComponent(groupScope) : '');
+  fetch(url)
     .then(function(r){ return r.json(); })
     .then(function(d){
       render(d);
