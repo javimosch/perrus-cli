@@ -11,6 +11,7 @@ import (
 type Config struct {
 	Endpoints []Endpoint  `yaml:"endpoints"`
 	Telegram  *Telegram   `yaml:"telegram,omitempty"`
+	Webhooks  *Webhooks   `yaml:"webhooks,omitempty"`
 }
 
 type Telegram struct {

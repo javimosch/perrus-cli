@@ -9,6 +9,7 @@ type Monitor struct {
 	cfg       *Config
 	store     *Store
 	telegram  *TelegramNotifier
+	webhook   *WebhookNotifier
 	done      chan struct{}
 	wg        sync.WaitGroup
 }
@@ -18,6 +19,7 @@ func NewMonitor(cfg *Config, store *Store) *Monitor {
 		cfg:      cfg,
 		store:    store,
 		telegram: NewTelegramNotifier(cfg.Telegram),
+		webhook:  NewWebhookNotifier(cfg),
 		done:     make(chan struct{}),
 	}
 }
@@ -42,6 +44,7 @@ func (m *Monitor) watch(ep *Endpoint) {
 	res := checkEndpoint(ep)
 	m.store.Add(ep.Name, res)
 	m.telegram.Notify(res)
+	m.webhook.Notify(res)
 
 	ticker := time.NewTicker(ep.Interval.Duration)
 	defer ticker.Stop()
@@ -53,6 +56,7 @@ func (m *Monitor) watch(ep *Endpoint) {
 			res := checkEndpoint(ep)
 			m.store.Add(ep.Name, res)
 			m.telegram.Notify(res)
+			m.webhook.Notify(res)
 		}
 	}
 }
