@@ -20,8 +20,11 @@ func runServer(port int, cfg *Config) {
 	mon := NewMonitor(cfg, store)
 	mon.Start()
 
+	ingester := NewAlertIngester(mon.telegram)
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/health", handleHealth)
+	mux.HandleFunc("/api/v1/ingest", ingester.Handle)
 	mux.HandleFunc("/api/v1/endpoints/statuses", func(w http.ResponseWriter, r *http.Request) {
 		all := store.GetStatuses(cfg)
 		// ?group=X filters to one group (case-insensitive) — powers the /g/<group> pages
