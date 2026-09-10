@@ -9,17 +9,21 @@ import (
 )
 
 type Config struct {
-	Endpoints []Endpoint  `yaml:"endpoints"`
-	Telegram  *Telegram   `yaml:"telegram,omitempty"`
-	Webhooks  *Webhooks   `yaml:"webhooks,omitempty"`
+	Endpoints []Endpoint `yaml:"endpoints"`
+	Telegram  *Telegram  `yaml:"telegram,omitempty"`
+	Webhooks  *Webhooks  `yaml:"webhooks,omitempty"`
 }
 
 type Telegram struct {
-	Enabled            bool      `yaml:"enabled"`
-	BotToken           string    `yaml:"bot_token"`
-	ChatID             string    `yaml:"chat_id"`
-	MaxMessagesPerHour int       `yaml:"max_messages_per_hour"`
-	GroupInterval      duration  `yaml:"group_interval"`
+	Enabled            bool   `yaml:"enabled"`
+	BotToken           string `yaml:"bot_token"`
+	ChatID             string `yaml:"chat_id"`
+	MaxMessagesPerHour int    `yaml:"max_messages_per_hour"`
+	// MaxGroupMessagesPerHour caps the grouped digest specifically. It used to
+	// be hardcoded to 1, which meant a single chatty source could starve every
+	// other alert for the rest of the hour. Defaults to MaxMessagesPerHour.
+	MaxGroupMessagesPerHour int      `yaml:"max_group_messages_per_hour"`
+	GroupInterval           duration `yaml:"group_interval"`
 }
 
 type Endpoint struct {
@@ -85,12 +89,7 @@ func loadConfig(path string) (*Config, error) {
 		if cfg.Telegram.ChatID == "" {
 			return nil, fmt.Errorf("telegram enabled but chat_id is empty")
 		}
-		if cfg.Telegram.MaxMessagesPerHour <= 0 {
-			cfg.Telegram.MaxMessagesPerHour = 5
-		}
-		if cfg.Telegram.GroupInterval.Duration == 0 {
-			cfg.Telegram.GroupInterval.Duration = 30 * time.Second
-		}
+		applyTelegramDefaults(&cfg)
 	}
 	return &cfg, nil
 }
@@ -131,4 +130,19 @@ endpoints:
     conditions:
       - "[CONNECTED] == true"
 `
+}
+
+// applyTelegramDefaults fills in the optional telegram settings.
+func applyTelegramDefaults(cfg *Config) {
+	if cfg.Telegram.MaxMessagesPerHour <= 0 {
+		cfg.Telegram.MaxMessagesPerHour = 5
+	}
+	// Inherit rather than fall back to 1: a group limit of 1 lets one noisy
+	// source starve every other alert.
+	if cfg.Telegram.MaxGroupMessagesPerHour <= 0 {
+		cfg.Telegram.MaxGroupMessagesPerHour = cfg.Telegram.MaxMessagesPerHour
+	}
+	if cfg.Telegram.GroupInterval.Duration == 0 {
+		cfg.Telegram.GroupInterval.Duration = 30 * time.Second
+	}
 }

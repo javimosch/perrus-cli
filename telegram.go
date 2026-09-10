@@ -11,16 +11,16 @@ import (
 )
 
 type TelegramNotifier struct {
-	cfg            *Telegram
-	client         *http.Client
-	mu             sync.Mutex
-	messageLog     map[string][]time.Time // endpoint -> message timestamps
-	pendingAlerts  map[string]*Result     // endpoint -> latest failure
-	lastSent       map[string]time.Time   // endpoint -> last sent timestamp
-	groupTimer     *time.Timer
-	sending        bool                   // flag to prevent concurrent sends
-	chatID         string
-	groupMessageLog []time.Time           // global group message timestamps
+	cfg             *Telegram
+	client          *http.Client
+	mu              sync.Mutex
+	messageLog      map[string][]time.Time // endpoint -> message timestamps
+	pendingAlerts   map[string]*Result     // endpoint -> latest failure
+	lastSent        map[string]time.Time   // endpoint -> last sent timestamp
+	groupTimer      *time.Timer
+	sending         bool // flag to prevent concurrent sends
+	chatID          string
+	groupMessageLog []time.Time // global group message timestamps
 }
 
 type TelegramMessage struct {
@@ -119,8 +119,11 @@ func (tn *TelegramNotifier) checkGroupRateLimit() bool {
 	}
 	tn.groupMessageLog = recent
 
-	// Check global limit (1 per hour for group messages)
-	if len(recent) >= 1 {
+	// Check the group limit. This was hardcoded to 1, so whichever source
+	// alerted first each hour silenced everything after it — on dk1 that was
+	// one repeating offload-watch alert dropping 142 other notifications,
+	// including rbm21 being unreachable for ten hours.
+	if len(recent) >= tn.cfg.MaxGroupMessagesPerHour {
 		return false
 	}
 
@@ -131,14 +134,14 @@ func (tn *TelegramNotifier) checkGroupRateLimit() bool {
 
 func (tn *TelegramNotifier) sendGroupedAlerts() {
 	tn.mu.Lock()
-	
+
 	// Prevent concurrent sends
 	if tn.sending {
 		tn.groupTimer = nil
 		tn.mu.Unlock()
 		return
 	}
-	
+
 	if len(tn.pendingAlerts) == 0 {
 		tn.groupTimer = nil
 		tn.mu.Unlock()
@@ -147,13 +150,13 @@ func (tn *TelegramNotifier) sendGroupedAlerts() {
 
 	// Mark as sending
 	tn.sending = true
-	
+
 	// Copy pending alerts to avoid holding lock during send
 	pending := make(map[string]*Result)
 	for k, v := range tn.pendingAlerts {
 		pending[k] = v
 	}
-	
+
 	tn.groupTimer = nil
 	tn.mu.Unlock()
 
@@ -173,9 +176,10 @@ func (tn *TelegramNotifier) sendGroupedAlerts() {
 		return
 	}
 
-	// Check global group rate limit (1 per hour)
+	// Check the group rate limit.
 	if !tn.checkGroupRateLimit() {
-		log.Printf("Telegram group rate limit exceeded (1 per hour), skipping notification")
+		log.Printf("Telegram group rate limit exceeded (%d per hour), skipping notification",
+			tn.cfg.MaxGroupMessagesPerHour)
 		tn.mu.Lock()
 		tn.sending = false
 		tn.mu.Unlock()
@@ -217,7 +221,7 @@ func (tn *TelegramNotifier) formatSingleAlert(res *Result) string {
 	if res.StatusCode != 0 {
 		statusInfo = fmt.Sprintf("Status: %d\n", res.StatusCode)
 	}
-	
+
 	var errors string
 	if len(res.Errors) > 0 {
 		errors = "\nErrors:\n"
@@ -241,7 +245,7 @@ func (tn *TelegramNotifier) formatSingleAlert(res *Result) string {
 
 func (tn *TelegramNotifier) formatGroupedAlert() string {
 	message := fmt.Sprintf("🚨 *Multiple Services DOWN*\n\n")
-	
+
 	for _, res := range tn.pendingAlerts {
 		var statusInfo string
 		if res.StatusCode != 0 {
@@ -249,7 +253,7 @@ func (tn *TelegramNotifier) formatGroupedAlert() string {
 		}
 		message += fmt.Sprintf("• %s%s — %dms\n", res.EndpointName, statusInfo, res.Duration)
 	}
-	
+
 	message += fmt.Sprintf("\nTime: %s", time.Now().Format(time.RFC3339))
 	return message
 }
