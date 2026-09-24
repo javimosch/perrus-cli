@@ -1,0 +1,12 @@
+[Unit]
+Description=Check for newly failed systemd units every 10 minutes
+
+[Timer]
+# OnCalendar, not OnUnitActiveSec: the latter counts from an activation seen
+# while the timer is running, so a timer enabled on a long-up host with the
+# service already run once was never scheduled.
+OnCalendar=*:0/10
+RandomizedDelaySec=30
+
+[Install]
+WantedBy=timers.target

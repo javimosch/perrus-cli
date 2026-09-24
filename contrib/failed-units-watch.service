@@ -1,0 +1,12 @@
+[Unit]
+Description=Alert (via perrus ingest) on systemd units that newly failed
+After=perrus.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/failed-units-watch
+StateDirectory=failed-units-watch
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+NoNewPrivileges=yes

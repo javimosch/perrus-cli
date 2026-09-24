@@ -107,3 +107,14 @@ Built on [boilerplate-cli-ui-go](https://github.com/javimosch/boilerplate-cli-ui
 ## Credits
 
 This is a clean-room reimplementation of [Gatus](https://github.com/TwiN/gatus) by TwiN. The config format and condition syntax are intentionally compatible. No Gatus source code was used.
+
+## contrib: failed-units-watch
+
+perrus probes URLs, so a systemd timer job that fails on every run stays invisible
+to it. `contrib/failed-units-watch.sh` (with its `.service` and `.timer`) checks
+`systemctl --failed` every 10 minutes and posts each *newly* failed unit to
+`/api/v1/ingest`, which sends it through the Telegram notifier. It is read-only
+apart from its state file: the first run records what is already failed without
+alerting, and an undelivered alert (perrus down, cooldown) is retried on the next
+run. Install: copy the script to `/usr/local/bin/failed-units-watch`, the units to
+`/etc/systemd/system/`, then `systemctl enable --now failed-units-watch.timer`.
